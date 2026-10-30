@@ -829,23 +829,23 @@ jobs:
           kotlin "$GITHUB_WORKSPACE/kernel_workspace/Action-Build/scripts/SusfsCompat.kts" postfix "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
           kotlin "$GITHUB_WORKSPACE/kernel_workspace/Action-Build/scripts/SusfsCompat.kts" revert "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
 
-      - name: Ensure susfs_def.h include in fs/exec.c
-        if: ${{ github.event.inputs.SUSFS_META != '-1' }}
+      - name: Patch ksu lsm_hook for 6.8+ lsm_id API
         run: |
-          # SusFS 补丁 Hunk #1 在 OPPO 源码匹配失败，include susfs_def.h 未插入
-          # 必须插在 include 区块靠后位置（sched.h/cred.h 已就位），否则 current_uid 等未声明
+          # 6.8+ 内核 security_add_hooks 第三参改为 const struct lsm_id *
+          # 上游 lsm_hook.c 只判断到 4.11，会传 char[] 导致类型不匹配
           cd kernel_workspace/kernel_platform/common
-          if grep -q "susfs_def.h" fs/exec.c; then
-            echo "already has susfs_def.h"
-          elif grep -q "^#include <linux/uaccess.h>" fs/exec.c; then
-            sed -i "0,/^#include <linux\/uaccess\.h>/s//#ifdef CONFIG_KSU_SUSFS\n#include <linux\/susfs_def.h>\n#endif\n#include <linux\/uaccess\.h>/" fs/exec.c
-            echo "inserted before uaccess.h"
-          else
-            sed -i "0,/^#include <linux\/sched\.h>/s//#ifdef CONFIG_KSU_SUSFS\n#include <linux\/susfs_def.h>\n#endif\n#include <linux\/sched\.h>/" fs/exec.c
-            echo "inserted before sched.h"
+          f=$(find . -path "*drivers/kernelsu/hook/lsm_hook.c" | head -1)
+          if [ -z "$f" ]; then echo "lsm_hook.c not found"; exit 0; fi
+          echo "target: $f"
+          if grep -q "ksu_lsm_id" "$f"; then
+            echo "already patched"
+            exit 0
           fi
-          grep -n "susfs_def.h" fs/exec.c | head -3
-          rm -f fs/*.rej 2>/dev/null || true
+          perl -0pi -e 's/(void __init ksu_lsm_hook_init\(void\))/#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)\nstatic struct lsm_id ksu_lsm_id = { .name = "ksu" };\n#endif\n\n$1/' "$f"
+          perl -0pi -e 's/#if LINUX_VERSION_CODE >= KERNEL_VERSION\(4, 11, 0\)\n(\s+)security_add_hooks\(ksu_hooks, ARRAY_SIZE\(ksu_hooks\), "ksu"\);/#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)\n${1}security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), \&ksu_lsm_id);\n#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n${1}security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu");/' "$f"
+          echo "--- after patch ---"
+          grep -n -A2 "ksu_lsm_id" "$f" | head -12
+          grep -n -A6 "ksu_lsm_hook_init(void)" "$f" | head -14
 
       # OGKI转换GKI，无需修改 dtbo 开机
       - name: Apply Convert HMBIRD_OGKI to HMBIRD_GKI
