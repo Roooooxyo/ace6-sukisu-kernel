@@ -1020,6 +1020,20 @@ jobs:
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' ./security/Kconfig
 
       # 配置信息，带*为附加项目，具有一定危险性和不确定性
+      - name: Fix libbpf for glibc C23
+        run: |
+          # Ubuntu 26.04 (glibc C23) 下 libbpf.c 的 strstr/strchr 返回值强转报错
+          cd kernel_workspace/kernel_platform/common
+          f="./tools/lib/bpf/libbpf.c"
+          if [ -f "$f" ]; then
+            sed -i -E 's/(\bres = )strstr\(sym_name, "\.llvm\\."\)/\1(char *)strstr(sym_name, ".llvm.")/' "$f"
+            sed -i -E "s/(\bnext_path = )strchr\(s, ':'\)/\1(char *)strchr(s, ':')"/ "$f"
+            echo '--- 修改结果 ---'
+            grep -nE '\(char \*\)(strstr|strchr)' "$f" || echo 'no match (可能无需修改)'
+          else
+            echo "libbpf.c 不存在，跳过"
+          fi
+
       - name: Add Configuration Settings
         run: |
           cd kernel_workspace/kernel_platform/common
