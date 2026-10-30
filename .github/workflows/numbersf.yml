@@ -1026,13 +1026,21 @@ jobs:
           cd kernel_workspace/kernel_platform/common
           f="./tools/lib/bpf/libbpf.c"
           if [ -f "$f" ]; then
-            sed -i -E 's/(\bres = )strstr\(sym_name, "\.llvm\\."\)/\1(char *)strstr(sym_name, ".llvm.")/' "$f"
-            sed -i -E "s/(\bnext_path = )strchr\(s, ':'\)/\1(char *)strchr(s, ':')"/ "$f"
-            echo '--- 修改结果 ---'
-            grep -nE '\(char \*\)(strstr|strchr)' "$f" || echo 'no match (可能无需修改)'
+            perl -i -pe 's/res = strstr\(sym_name/res = (char *)strstr(sym_name/g' "$f" || true
+            perl -i -pe "s/next_path = strchr\(s, ':'\)/next_path = (char *)strchr(s, ':')/g" "$f" || true
+            echo '--- libbpf.c 修改结果 ---'
+            grep -nE '\(char \*\)(strstr|strchr)' "$f" | head -10 || echo 'no match'
           else
             echo "libbpf.c 不存在，跳过"
           fi
+
+          # 兜底：移除 tools 侧构建的 -Werror（KCFLAGS 的 -Wno-error 管不到 tools/）
+          for mk in ./tools/lib/bpf/Makefile ./tools/build/Makefile.build ./tools/scripts/Makefile.include; do
+            if [ -f "$mk" ]; then
+              sed -i 's/-Werror//g' "$mk"
+              echo "已清理 -Werror: $mk"
+            fi
+          done
 
       - name: Add Configuration Settings
         run: |
