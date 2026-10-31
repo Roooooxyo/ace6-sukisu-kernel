@@ -1333,6 +1333,36 @@ jobs:
           ls -l "$DST"
           curl -fsSL "$URL" -o "$DST"
           echo "--- after ---"; wc -l "$DST"; head -5 "$DST"
+      - name: Fix KSU preinit runner path
+        run: |
+          cd kernel_workspace/kernel_platform
+          echo "=== [diag] KSU layout ==="
+          ls -ld drivers/kernelsu common/drivers/kernelsu KernelSU 2>/dev/null || true
+          ls -l KernelSU/kernel/preinit/runner/ 2>/dev/null | head -4 || true
+          ls -l common/drivers/kernelsu/preinit/runner/ 2>/dev/null | head -4 || true
+          SRC=""
+          for c in KernelSU/kernel/preinit/runner/runner.c common/drivers/kernelsu/preinit/runner/runner.c drivers/kernelsu/preinit/runner/runner.c; do
+            if [ -f "$c" ]; then SRC="$c"; break; fi
+          done
+          echo "runner.c source = $SRC"
+          if [ -n "$SRC" ]; then
+            for d in common/drivers/kernelsu drivers/kernelsu; do
+              [ -d "$d" ] || continue
+              if [ ! -f "$d/preinit/runner/runner.c" ]; then
+                mkdir -p "$d/preinit/runner" 2>/dev/null || true
+                cp -f "$SRC" "$d/preinit/runner/runner.c" 2>/dev/null || true
+                echo "copied runner.c -> $d"
+              fi
+              if [ -d KernelSU/kernel/preinit/runner/nolibc ] && [ ! -d "$d/preinit/runner/nolibc" ]; then
+                cp -rf KernelSU/kernel/preinit/runner/nolibc "$d/preinit/runner/" 2>/dev/null || true
+                echo "copied nolibc -> $d"
+              fi
+            done
+          fi
+          # 关键：删掉 usr/include/linux/unistd.h，让 KSU Makefile 走 KSU_NO_PREINIT 分支
+          rm -f common/out/usr/include/linux/unistd.h
+          echo "removed unistd.h guard: $([ ! -f common/out/usr/include/linux/unistd.h ] && echo yes || echo no)"
+
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
