@@ -829,6 +829,24 @@ jobs:
           kotlin "$GITHUB_WORKSPACE/kernel_workspace/Action-Build/scripts/SusfsCompat.kts" postfix "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
           kotlin "$GITHUB_WORKSPACE/kernel_workspace/Action-Build/scripts/SusfsCompat.kts" revert "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
 
+      - name: Ensure susfs_def.h include in fs/exec.c
+        if: ${{ github.event.inputs.SUSFS_META != '-1' }}
+        run: |
+          # SusFS 补丁 Hunk #1 在 OPPO 源码匹配失败，include susfs_def.h 未插入
+          # 必须插在 include 区块靠后（sched.h/cred.h 已就位），否则 current_uid 未声明
+          cd kernel_workspace/kernel_platform/common
+          if grep -q "susfs_def.h" fs/exec.c; then
+            echo "already has susfs_def.h"
+          elif grep -q "^#include <linux/uaccess.h>" fs/exec.c; then
+            sed -i "0,/^#include <linux\/uaccess\.h>/s//#ifdef CONFIG_KSU_SUSFS\n#include <linux\/susfs_def.h>\n#endif\n#include <linux\/uaccess\.h>/" fs/exec.c
+            echo "inserted before uaccess.h"
+          else
+            sed -i "0,/^#include <linux\/sched\.h>/s//#ifdef CONFIG_KSU_SUSFS\n#include <linux\/susfs_def.h>\n#endif\n#include <linux\/sched\.h>/" fs/exec.c
+            echo "inserted before sched.h"
+          fi
+          grep -n "susfs_def.h" fs/exec.c | head -3
+          rm -f fs/*.rej 2>/dev/null || true
+
       - name: Patch ksu lsm_hook for 6.8+ lsm_id API
         run: |
           # 6.8+ 内核 security_add_hooks 第三参改为 const struct lsm_id *
