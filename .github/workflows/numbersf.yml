@@ -850,22 +850,22 @@ jobs:
       - name: Patch ksu lsm_hook for 6.8+ lsm_id API
         run: |
           # 6.8+ 内核 security_add_hooks 第三参改为 const struct lsm_id *
-          # 上游 lsm_hook.c 只判断到 4.11，会传 char[] 导致类型不匹配
-          cd kernel_workspace/kernel_platform/common
-          f=$(find . -path "*drivers/kernelsu/hook/lsm_hook.c" | head -1)
-          if [ -z "$f" ]; then echo "lsm_hook.c not found"; exit 0; fi
-          echo "target: $f"
-          if grep -q "ksu_lsm_id" "$f"; then
-            echo "already patched"
-            exit 0
+          cd kernel_workspace/kernel_platform
+          f=""
+          for cand in ./common/drivers/kernelsu/hook/lsm_hook.c ./KernelSU/kernel/hook/lsm_hook.c; do
+            if [ -f "$cand" ]; then f="$cand"; break; fi
+          done
+          if [ -z "$f" ]; then
+            f=$(find -L . -path "*drivers/kernelsu/hook/lsm_hook.c" 2>/dev/null | head -1)
           fi
+          if [ -z "$f" ]; then echo "lsm_hook.c not found (searched both)"; ls -la common/drivers/ 2>/dev/null | head; exit 0; fi
+          echo "target: $f"
+          if grep -q "ksu_lsm_id" "$f"; then echo "already patched"; exit 0; fi
           perl -0pi -e 's/(void __init ksu_lsm_hook_init\(void\))/#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)\nstatic struct lsm_id ksu_lsm_id = { .name = "ksu" };\n#endif\n\n$1/' "$f"
           perl -0pi -e 's/#if LINUX_VERSION_CODE >= KERNEL_VERSION\(4, 11, 0\)\n(\s+)security_add_hooks\(ksu_hooks, ARRAY_SIZE\(ksu_hooks\), "ksu"\);/#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)\n${1}security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), \&ksu_lsm_id);\n#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)\n${1}security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu");/' "$f"
           echo "--- after patch ---"
-          grep -n -A2 "ksu_lsm_id" "$f" | head -12
-          grep -n -A6 "ksu_lsm_hook_init(void)" "$f" | head -14
+          grep -n "ksu_lsm_id" "$f" | head -5
 
-      # OGKI转换GKI，无需修改 dtbo 开机
       - name: Apply Convert HMBIRD_OGKI to HMBIRD_GKI
         if: ${{ (fromJSON(env.VERSIONLEVEL) > 6 || (fromJSON(env.VERSIONLEVEL) == 6 && fromJSON(env.PATCHLEVEL) >= 6)) && github.event.inputs.SCHED_HMBIRD == 'false' }}
         run: |
