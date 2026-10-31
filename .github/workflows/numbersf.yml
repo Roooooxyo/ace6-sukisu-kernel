@@ -1359,7 +1359,18 @@ jobs:
               fi
             done
           fi
-          # 关键：删掉 usr/include/linux/unistd.h，让 KSU Makefile 走 KSU_NO_PREINIT 分支
+          # 关键：make 在 out 目录下把 KSU_KERNEL_DIR 解析成 ../../drivers/kernelsu
+          # （相对 out = kernel_platform/drivers/kernelsu），但真实链接在 common/drivers/
+          # 两个位置都建好链接，任何解析路径都能命中
+          mkdir -p drivers
+          if [ ! -e drivers/kernelsu ]; then
+            ln -sfn ../KernelSU/kernel drivers/kernelsu
+            echo "created link: drivers/kernelsu -> ../KernelSU/kernel"
+          fi
+          ls -ld common/drivers/kernelsu drivers/kernelsu 2>/dev/null || true
+          for t in common/drivers/kernelsu/preinit/runner/runner.c drivers/kernelsu/preinit/runner/runner.c; do
+            echo "check $t: $([ -f "$t" ] && echo YES || echo NO)"
+          done
           rm -f common/out/usr/include/linux/unistd.h
           echo "removed unistd.h guard: $([ ! -f common/out/usr/include/linux/unistd.h ] && echo yes || echo no)"
 
