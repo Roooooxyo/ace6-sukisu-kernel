@@ -1325,6 +1325,30 @@ jobs:
             echo "KSU version file not found!"
             exit 1
           fi
+      - name: Revert two suspicious kernel commits (rules.c / file_wrapper.c)
+        run: |
+          set -e
+          f1=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/selinux/rules.c' | head -1)
+          f2=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/infra/file_wrapper.c' | head -1)
+          echo "rules.c        -> $f1"
+          echo "file_wrapper.c -> $f2"
+          if [ -n "$f1" ]; then
+            curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/1efcc9ef3243cddd088182d5170659bccd8dbeb5/kernel/selinux/rules.c" -o "$f1"
+            echo "reverted: rules.c"
+          else
+            echo "rules.c not found!"
+            exit 1
+          fi
+          if [ -n "$f2" ]; then
+            curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/6b789fdde98508ab2cd57ace473d502dd15d9be2/kernel/infra/file_wrapper.c" -o "$f2"
+            echo "reverted: file_wrapper.c"
+          else
+            echo "file_wrapper.c not found!"
+          fi
+          echo "--- verify rules.c ---"
+          grep -n "reset_avc_cache" "$f1" | head -5
+          echo "--- verify file_wrapper.c ---"
+          grep -c "ksu_file_close" "$f2" || true
       - name: KSU version check (upstream 10-13 把公式搬到了 kernel/Kbuild)
         run: |
           set +e
