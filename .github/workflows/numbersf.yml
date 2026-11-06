@@ -1311,6 +1311,20 @@ jobs:
           done
           echo "--- verify forced output ---"
           sh ./common/scripts/setlocalversion .
+      - name: Force KSU version code 41150 (align with v4.3.0-r2 manager)
+        run: |
+          set +e
+          f=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/Kbuild' | head -1)
+          [ -z "$f" ] && f=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/Makefile' | head -1)
+          echo "pin target: $f"
+          if [ -n "$f" ]; then
+            sed -i 's|^GITHUB_COMMITS.*|GITHUB_COMMITS := 3965|' "$f"
+            echo "--- after pin ---"
+            grep -n "GITHUB_COMMITS" "$f" | head -5
+          else
+            echo "KSU version file not found!"
+            exit 1
+          fi
       - name: KSU version check (upstream 10-13 把公式搬到了 kernel/Kbuild)
         run: |
           set +e
