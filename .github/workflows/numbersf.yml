@@ -1374,20 +1374,23 @@ jobs:
           rm -f common/out/usr/include/linux/unistd.h
           echo "removed unistd.h guard: $([ ! -f common/out/usr/include/linux/unistd.h ] && echo yes || echo no)"
 
-      - name: Include susfs.h for KSU sources (SUSFS compat)
+      - name: Declare susfs priority-uid API for KSU sources (SUSFS compat)
         if: ${{ github.event.inputs.SUSFS_META != '-1' }}
         run: |
-          # KSU 上游在 CONFIG_KSU_SUSFS 下调用 susfs_* 函数，但部分源文件未 include linux/susfs.h
+          # susfs4ksu 的 susfs.h 把这两个声明裹在 CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER 里，
+          # 而 KSU 的 Kconfig/SukiSU builtin 未提供该选项，导致调用点 undeclared。
+          # 函数定义在 fs/susfs.c 中是无条件的，这里直接补原型即可。
           cd kernel_workspace/kernel_platform
+          DECL='extern void susfs_parse_priority_app_strings(void);\nextern void susfs_set_priority_uid_filter(void __user **);'
           for f in $(grep -rl -e "susfs_parse_priority_app_strings" -e "susfs_set_priority_uid_filter" common/drivers/kernelsu --include=*.c 2>/dev/null); do
-            if grep -q "linux/susfs.h" "$f"; then
-              echo "already includes susfs.h: $f"
+            if grep -q "extern void susfs_parse_priority_app_strings" "$f"; then
+              echo "already declared: $f"
             else
-              sed -i '0,/^#include/s//#include <linux\/susfs.h>\n#include/' "$f"
-              echo "added susfs.h include: $f"
+              sed -i "0,/^#include/s//$DECL\n#include/" "$f"
+              echo "declared susfs API in: $f"
             fi
           done
-          grep -n "susfs" common/drivers/kernelsu/manager/pkg_observer.c | head -5 || true
+          grep -n "susfs_set_priority_uid_filter" common/drivers/kernelsu/supercall/dispatch.c | head -3 || true
 
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
